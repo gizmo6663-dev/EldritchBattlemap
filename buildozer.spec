@@ -19,6 +19,7 @@ android.permissions = READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE
 
 android.api = 33
 android.minapi = 24
+android.build_tools_version = 33.0.2
 android.archs = arm64-v8a, armeabi-v7a
 android.allow_backup = True
 
