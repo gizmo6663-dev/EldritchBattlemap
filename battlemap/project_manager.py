@@ -1,0 +1,102 @@
+"""Persists battlemap state to JSON.
+
+- last_session.json    — auto-saved continuously, restored on launch
+- projects/<name>.json — manual named saves, loadable on demand
+"""
+import os
+import json
+from datetime import datetime
+from battlemap.config import LAST_SESSION_FILE, PROJECTS_DIR, ensure_dirs
+
+
+class ProjectManager:
+    def __init__(self):
+        ensure_dirs()
+
+    # ----- Serialization -----
+    def serialize_canvas(self, canvas_area):
+        return {
+            'version': 1,
+            'saved_at': datetime.now().isoformat(),
+            'grid': {
+                'size': float(canvas_area.grid_overlay.grid_size),
+                'visible': bool(canvas_area.grid_overlay.visible),
+            },
+            'assets': [a.to_dict() for a in canvas_area.all_assets()],
+        }
+
+    def deserialize_into(self, canvas_area, data):
+        from battlemap.placed_asset import PlacedAsset
+        canvas_area.clear_assets()
+        grid = data.get('grid', {})
+        try:
+            canvas_area.grid_overlay.grid_size = float(grid.get('size', 64.0))
+            canvas_area.grid_overlay.visible = bool(grid.get('visible', True))
+        except Exception:
+            pass
+        for asset_data in data.get('assets', []):
+            try:
+                src = asset_data.get('source', '')
+                if not src or not os.path.isfile(src):
+                    # Skip missing files (asset deleted from disk since save)
+                    continue
+                asset = PlacedAsset.from_dict(asset_data)
+                canvas_area.assets_layer.add_widget(asset)
+            except Exception:
+                continue
+
+    # ----- Last session (auto) -----
+    def save_last_session(self, canvas_area):
+        try:
+            data = self.serialize_canvas(canvas_area)
+            with open(LAST_SESSION_FILE, 'w') as f:
+                json.dump(data, f, indent=2)
+            return True
+        except Exception:
+            return False
+
+    def load_last_session(self, canvas_area):
+        if not os.path.isfile(LAST_SESSION_FILE):
+            return False
+        try:
+            with open(LAST_SESSION_FILE, 'r') as f:
+                data = json.load(f)
+            self.deserialize_into(canvas_area, data)
+            return True
+        except Exception:
+            return False
+
+    # ----- Named projects (manual) -----
+    def save_project(self, canvas_area, name):
+        safe = ''.join(c for c in name if c.isalnum() or c in (' ', '-', '_')).strip()
+        if not safe:
+            return None
+        path = os.path.join(PROJECTS_DIR, f'{safe}.json')
+        data = self.serialize_canvas(canvas_area)
+        data['name'] = safe
+        with open(path, 'w') as f:
+            json.dump(data, f, indent=2)
+        return path
+
+    def load_project(self, canvas_area, name):
+        path = os.path.join(PROJECTS_DIR, f'{name}.json')
+        if not os.path.isfile(path):
+            return False
+        try:
+            with open(path, 'r') as f:
+                data = json.load(f)
+            self.deserialize_into(canvas_area, data)
+            return True
+        except Exception:
+            return False
+
+    def list_projects(self):
+        ensure_dirs()
+        try:
+            return sorted([
+                os.path.splitext(n)[0]
+                for n in os.listdir(PROJECTS_DIR)
+                if n.lower().endswith('.json')
+            ])
+        except Exception:
+            return []
