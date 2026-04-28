@@ -17,6 +17,7 @@ fullscreen = 0
 # Storage access for /sdcard/Documents/EldritchBattlemap/
 android.permissions = READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE
 
+android.accept_sdk_license = True
 android.api = 33
 android.minapi = 24
 android.build_tools_version = 33.0.2
