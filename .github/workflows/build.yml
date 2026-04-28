@@ -1,0 +1,28 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: kivy/buildozer:latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Pin cython (pyjnius compat)
+        run: pip install "cython<3.0"
+
+      - name: Build APK
+        run: buildozer -v android debug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: eldritch-battlemap-apk
+          path: bin/*.apk
