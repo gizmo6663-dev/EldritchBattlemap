@@ -4,8 +4,9 @@ Two stacked layers:
   - assets_layer (FloatLayout)  → placed PlacedAsset (Scatter) widgets
   - grid_overlay (GridOverlay)  → drawn on top, touch-passthrough
 
-Z-ordering helpers reorder children of assets_layer only.
-PNG export captures both layers via Widget.export_to_png().
+v0.2: tracks the explicit `_selected` asset (no more "children[0]" guessing),
+forwards long-press events to App for the per-asset menu, and brings any
+touched asset to the front automatically.
 """
 from kivy.uix.relativelayout import RelativeLayout
 from kivy.uix.floatlayout import FloatLayout
@@ -17,8 +18,10 @@ from battlemap.config import (
 
 
 class CanvasArea(RelativeLayout):
-    def __init__(self, **kwargs):
+    def __init__(self, on_asset_longpress=None, **kwargs):
         super().__init__(**kwargs)
+        self._on_asset_longpress = on_asset_longpress
+        self._selected = None
 
         self.assets_layer = FloatLayout(size_hint=(1, 1))
         self.add_widget(self.assets_layer)
@@ -32,25 +35,64 @@ class CanvasArea(RelativeLayout):
 
     # ----- Asset placement -----
     def add_asset(self, source, center=None):
-        asset = PlacedAsset(source=source, base_size=DEFAULT_ASSET_SIZE)
+        asset = PlacedAsset(
+            source=source,
+            base_size=DEFAULT_ASSET_SIZE,
+            on_select=self._handle_asset_select,
+            on_longpress=self._on_asset_longpress,
+        )
         if center is None:
             center = (self.width / 2, self.height / 2)
         asset.center = center
+        self.assets_layer.add_widget(asset)
+        self._handle_asset_select(asset)  # newly placed = selected
+        return asset
+
+    def restore_asset(self, asset_data):
+        """Used by ProjectManager when loading a saved project."""
+        asset = PlacedAsset.from_dict(
+            asset_data,
+            on_select=self._handle_asset_select,
+            on_longpress=self._on_asset_longpress,
+        )
         self.assets_layer.add_widget(asset)
         return asset
 
     def remove_asset(self, asset):
         if asset in self.assets_layer.children:
             self.assets_layer.remove_widget(asset)
+        if self._selected is asset:
+            self._selected = None
 
     def clear_assets(self):
         for child in list(self.assets_layer.children):
             self.assets_layer.remove_widget(child)
+        self._selected = None
 
     def all_assets(self):
         # children[0] is on top; reverse so the iterator goes bottom → top
         # (matches paint order, which is what we want for save/restore).
         return list(reversed(self.assets_layer.children))
+
+    # ----- Selection -----
+    def _handle_asset_select(self, asset):
+        # Deselect previous
+        if self._selected is not None and self._selected is not asset:
+            self._selected.selected = False
+        self._selected = asset
+        asset.selected = True
+        # Touched asset rises to top (visual + Front/Back actions feel right)
+        self.bring_to_front(asset)
+
+    def selected_asset(self):
+        if self._selected and self._selected in self.assets_layer.children:
+            return self._selected
+        return None
+
+    def deselect(self):
+        if self._selected:
+            self._selected.selected = False
+        self._selected = None
 
     # ----- Z-order -----
     def bring_to_front(self, asset):
@@ -62,12 +104,6 @@ class CanvasArea(RelativeLayout):
         if asset in self.assets_layer.children:
             self.assets_layer.remove_widget(asset)
             self.assets_layer.add_widget(asset, index=len(self.assets_layer.children))
-
-    # ----- Selection (most recently touched Scatter rises to children[0]) -----
-    def selected_asset(self):
-        if self.assets_layer.children:
-            return self.assets_layer.children[0]
-        return None
 
     # ----- Grid -----
     def toggle_grid(self):

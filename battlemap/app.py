@@ -43,7 +43,8 @@ class BattlemapApp(App):
         self.toolbar = Toolbar(on_action=self._on_toolbar_action)
         right.add_widget(self.toolbar)
 
-        self.canvas_area = CanvasArea()
+        # Wire long-press → asset menu
+        self.canvas_area = CanvasArea(on_asset_longpress=self._show_asset_menu)
         right.add_widget(self.canvas_area)
 
         root.add_widget(right)
@@ -103,7 +104,34 @@ class BattlemapApp(App):
     def on_stop(self):
         self.project_manager.save_last_session(self.canvas_area)
 
-    # ---------- Dialogs ----------
+    # ---------- Per-asset long-press menu ----------
+    def _show_asset_menu(self, asset):
+        ca = self.canvas_area
+        content = BoxLayout(orientation='vertical', padding=dp(8), spacing=dp(8))
+        popup = Popup(title='Asset', content=content, size_hint=(0.6, 0.55))
+
+        def _wrap(fn):
+            def handler(*_):
+                fn()
+                popup.dismiss()
+            return handler
+
+        for label, fn in [
+            ('Bring to Front', lambda: ca.bring_to_front(asset)),
+            ('Send to Back',   lambda: ca.send_to_back(asset)),
+            ('Delete',         lambda: ca.remove_asset(asset)),
+        ]:
+            btn = Button(text=label, size_hint_y=None, height=dp(48))
+            btn.bind(on_release=_wrap(fn))
+            content.add_widget(btn)
+
+        cancel = Button(text='Cancel', size_hint_y=None, height=dp(48))
+        cancel.bind(on_release=lambda *_: popup.dismiss())
+        content.add_widget(cancel)
+
+        popup.open()
+
+    # ---------- Project dialogs ----------
     def _show_save_dialog(self):
         content = BoxLayout(orientation='vertical', padding=dp(8), spacing=dp(8))
         content.add_widget(Label(text='Project name:', size_hint_y=None, height=dp(28)))

@@ -26,7 +26,6 @@ class ProjectManager:
         }
 
     def deserialize_into(self, canvas_area, data):
-        from battlemap.placed_asset import PlacedAsset
         canvas_area.clear_assets()
         grid = data.get('grid', {})
         try:
@@ -40,10 +39,11 @@ class ProjectManager:
                 if not src or not os.path.isfile(src):
                     # Skip missing files (asset deleted from disk since save)
                     continue
-                asset = PlacedAsset.from_dict(asset_data)
-                canvas_area.assets_layer.add_widget(asset)
+                canvas_area.restore_asset(asset_data)
             except Exception:
                 continue
+        # Loaded canvas starts with nothing selected
+        canvas_area.deselect()
 
     # ----- Last session (auto) -----
     def save_last_session(self, canvas_area):

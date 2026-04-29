@@ -1,13 +1,12 @@
 """Left-side asset browser.
 
-Category dropdown + scrollable thumbnail grid. Thumbnails are raw Image
-widgets with ButtonBehavior mixed in — no Button widget wrapping (matches
-Eldritch Portal's image-handling architecture).
+Category tabs (one row of toggle buttons) + scrollable thumbnail grid.
+Thumbnails are raw Image widgets with ButtonBehavior mixed in.
 """
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.scrollview import ScrollView
-from kivy.uix.spinner import Spinner
+from kivy.uix.togglebutton import ToggleButton
 from kivy.uix.image import Image
 from kivy.uix.label import Label
 from kivy.uix.behaviors import ButtonBehavior
@@ -27,29 +26,36 @@ class AssetPanel(BoxLayout):
         self.library = library
         self.on_asset_selected = on_asset_selected
         self.on_refresh_request = on_refresh_request
+        self._current_category = CATEGORIES[0]
 
         self.add_widget(Label(
             text='[b]Eldritch Battlemap[/b]',
             markup=True,
             size_hint_y=None,
-            height=dp(36),
+            height=dp(32),
         ))
 
-        self.category_spinner = Spinner(
-            text=CATEGORIES[0],
-            values=CATEGORIES,
+        # Category tabs — row of ToggleButtons in a 'category' group so
+        # only one stays pressed at a time.
+        tab_row = BoxLayout(
+            orientation='horizontal',
             size_hint_y=None,
-            height=dp(44),
+            height=dp(40),
+            spacing=dp(2),
         )
-        self.category_spinner.bind(text=lambda spinner, val: self._populate(val))
-        self.add_widget(self.category_spinner)
-
-        # Refresh button (re-scans imported folder for new files)
-        refresh = _ThumbImage(  # repurposed — a tappable label-style row
-            source='',
-            size_hint_y=None,
-            height=dp(0),  # invisible placeholder; refresh happens via toolbar action
-        )
+        self._tabs = {}
+        for cat in CATEGORIES:
+            tab = ToggleButton(
+                text=cat,
+                group='category',
+                allow_no_selection=False,
+                font_size=dp(11),
+                state='down' if cat == CATEGORIES[0] else 'normal',
+            )
+            tab.bind(state=self._on_tab_state)
+            self._tabs[cat] = tab
+            tab_row.add_widget(tab)
+        self.add_widget(tab_row)
 
         scroll = ScrollView(size_hint=(1, 1))
         self.thumb_grid = GridLayout(
@@ -64,15 +70,23 @@ class AssetPanel(BoxLayout):
 
         self._populate(CATEGORIES[0])
 
+    def _on_tab_state(self, tab, state):
+        if state == 'down':
+            self._current_category = tab.text
+            self._populate(tab.text)
+
     def _populate(self, category):
         self.thumb_grid.clear_widgets()
         items = self.library.assets(category)
         if not items:
             self.thumb_grid.add_widget(Label(
-                text=f'No assets in\n{category}\n\nDrop images into\n/sdcard/Documents/\nEldritchBattlemap/\nimported/{category}/',
+                text=(f'No assets in\n{category}\n\n'
+                      f'Drop images into\n/sdcard/Documents/\n'
+                      f'EldritchBattlemap/\nimported/{category}/\n\n'
+                      f'Then tap Refresh.'),
                 halign='center',
                 size_hint_y=None,
-                height=dp(180),
+                height=dp(200),
                 font_size=dp(11),
             ))
             return
@@ -90,4 +104,4 @@ class AssetPanel(BoxLayout):
 
     def reload(self):
         self.library.refresh()
-        self._populate(self.category_spinner.text)
+        self._populate(self._current_category)
