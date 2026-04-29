@@ -16,7 +16,7 @@ ACTIONS = [
     ('Save',     'save'),
     ('New',      'new'),
     ('Refresh',  'refresh'),
-    ('PNG',      'export'),
+    ('Export',      'export'),
 ]
 
 
