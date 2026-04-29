@@ -1,22 +1,30 @@
-"""Top toolbar with action buttons."""
+"""Top toolbar with action buttons.
+
+Most entries are regular Buttons fired on release. Entries with a
+trailing `True` are ToggleButtons whose handler receives the new on/off
+state. Currently: only `Snap` is a toggle.
+"""
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
+from kivy.uix.togglebutton import ToggleButton
 from kivy.metrics import dp
 
 
-# (label, action_id) — action_id is dispatched to BattlemapApp._on_toolbar_action
+# (label, action_id) for buttons; (label, action_id, True) for toggle buttons
 ACTIONS = [
-    ('Grid',     'toggle_grid'),
-    ('Grid -',   'grid_smaller'),
-    ('Grid +',   'grid_bigger'),
-    ('Front',    'bring_front'),
-    ('Back',     'send_back'),
-    ('Delete',   'delete'),
-    ('Load',     'load'),
-    ('Save',     'save'),
-    ('New',      'new'),
-    ('Refresh',  'refresh'),
-    ('Export',      'export'),
+    ('Grid',      'toggle_grid'),
+    ('Grid -',    'grid_smaller'),
+    ('Grid +',    'grid_bigger'),
+    ('Snap',      'toggle_snap',  True),
+    ('Front',     'bring_front'),
+    ('Back',      'send_back'),
+    ('Delete',    'delete'),
+    ('No Floor',  'clear_floor'),
+    ('Load',      'load'),
+    ('Save',      'save'),
+    ('New',       'new'),
+    ('Refresh',   'refresh'),
+    ('Export',    'export'),
 ]
 
 
@@ -30,7 +38,15 @@ class Toolbar(BoxLayout):
             **kwargs,
         )
         self.on_action = on_action
-        for label, action in ACTIONS:
-            btn = Button(text=label, font_size=dp(13))
-            btn.bind(on_release=lambda b, a=action: self.on_action(a))
+        for action_def in ACTIONS:
+            if len(action_def) == 3 and action_def[2]:
+                # ToggleButton — handler gets bool state
+                label, action, _ = action_def
+                btn = ToggleButton(text=label, font_size=dp(12))
+                btn.bind(state=lambda b, s, a=action:
+                         self.on_action(a, s == 'down'))
+            else:
+                label, action = action_def[0], action_def[1]
+                btn = Button(text=label, font_size=dp(12))
+                btn.bind(on_release=lambda b, a=action: self.on_action(a))
             self.add_widget(btn)

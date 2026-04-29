@@ -1,28 +1,57 @@
 """A draggable, scalable, rotatable image on the battlemap.
 
-Uses Kivy's built-in Scatter — multitouch drag, pinch-scale, two-finger
-rotate are handled natively.
-
-v0.2 additions:
-  - selected: BooleanProperty drives a yellow outline drawn in canvas.after
-  - long-press detection (~600ms hold without moving) fires _on_longpress
-  - any touch-down fires _on_select so the parent can mark this asset selected
+v0.3:
+  - Selection highlight is now a child Widget (not canvas.after) so it
+    correctly inherits the Scatter's transform. Children of Scatter are
+    drawn through the transformation matrix automatically.
+  - on_drag_end callback fires when the last finger is released, used by
+    CanvasArea for snap-to-grid.
 """
 from kivy.uix.scatter import Scatter
 from kivy.uix.image import Image
-from kivy.properties import StringProperty, BooleanProperty
+from kivy.uix.widget import Widget
 from kivy.graphics import Color, Line
+from kivy.properties import StringProperty, BooleanProperty
 from kivy.clock import Clock
 
 LONGPRESS_SECONDS = 0.6
 LONGPRESS_MOVE_TOLERANCE_SQ = 12 * 12  # ~12dp of slop before we cancel
 
 
+class _SelectionHighlight(Widget):
+    """Yellow outline.
+
+    Added as a child of PlacedAsset (which is a Scatter), so it inherits
+    the parent's transform — translation, rotation, and scale all apply
+    automatically. Touches pass through.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        with self.canvas:
+            self._color = Color(1.0, 0.85, 0.2, 0.0)
+            self._line = Line(rectangle=(0, 0, 1, 1), width=1.5)
+        self.bind(pos=self._update, size=self._update)
+
+    def _update(self, *_):
+        self._line.rectangle = (self.x, self.y, self.width, self.height)
+
+    def set_visible(self, visible):
+        self._color.a = 1.0 if visible else 0.0
+
+    # Touch passthrough — never block the asset's drag/scale/rotate
+    def on_touch_down(self, touch): return False
+    def on_touch_move(self, touch): return False
+    def on_touch_up(self, touch): return False
+
+
 class PlacedAsset(Scatter):
     source = StringProperty('')
     selected = BooleanProperty(False)
 
-    def __init__(self, source, base_size=128, on_select=None, on_longpress=None, **kwargs):
+    def __init__(self, source, base_size=128,
+                 on_select=None, on_longpress=None, on_drag_end=None,
+                 **kwargs):
         super().__init__(**kwargs)
         self.do_translation = True
         self.do_rotation = True
@@ -32,12 +61,11 @@ class PlacedAsset(Scatter):
         self.size_hint = (None, None)
         self.source = source
 
-        # Callbacks (set by CanvasArea / App)
         self._on_select = on_select
         self._on_longpress = on_longpress
+        self._on_drag_end = on_drag_end
+        self._longpress_fired = False
 
-        # Match the Scatter frame to the image's natural aspect ratio so
-        # touch targets line up with the visible pixels.
         w, h = self._detect_aspect(source, base_size)
         self.size = (w, h)
 
@@ -50,17 +78,13 @@ class PlacedAsset(Scatter):
         )
         self.add_widget(self.image)
 
-        # Selection outline — drawn in canvas.after so it sits on top of
-        # the image. Alpha is toggled by `selected`.
-        with self.canvas.after:
-            self._sel_color = Color(1.0, 0.85, 0.2, 0.0)  # warm yellow
-            self._sel_line = Line(rectangle=(0, 0, self.width, self.height), width=1.5)
-        self.bind(
-            selected=self._update_selection_alpha,
-            size=self._update_selection_rect,
-        )
+        # Highlight is a child widget — it inherits Scatter's transform,
+        # so it follows the asset through translation, rotation, and scale.
+        self._highlight = _SelectionHighlight(size_hint=(1, 1))
+        self.add_widget(self._highlight)
 
-    # ---- Aspect detection ----
+        self.bind(selected=self._update_selection_visual)
+
     @staticmethod
     def _detect_aspect(source, base_size):
         try:
@@ -75,23 +99,17 @@ class PlacedAsset(Scatter):
             pass
         return (float(base_size), float(base_size))
 
-    # ---- Selection visual ----
-    def _update_selection_alpha(self, *_):
-        self._sel_color.a = 1.0 if self.selected else 0.0
+    def _update_selection_visual(self, *_):
+        self._highlight.set_visible(self.selected)
 
-    def _update_selection_rect(self, *_):
-        self._sel_line.rectangle = (0, 0, self.width, self.height)
-
-    # ---- Touch handling: select + long-press ----
+    # ---- Touch handling ----
     def on_touch_down(self, touch):
         handled = super().on_touch_down(touch)
         if handled:
-            # Notify parent that this asset was touched (for selection)
             if self._on_select:
                 self._on_select(self)
-            # Schedule a long-press only on the FIRST finger of this asset
-            # (so two-finger rotate/scale doesn't trigger the menu).
             if len(self._touches) == 1:
+                self._longpress_fired = False
                 touch.ud['_lp_start'] = touch.pos
                 touch.ud['_lp_event'] = Clock.schedule_once(
                     lambda dt: self._fire_longpress(), LONGPRESS_SECONDS
@@ -115,9 +133,19 @@ class PlacedAsset(Scatter):
         if ev is not None:
             ev.cancel()
             touch.ud['_lp_event'] = None
-        return super().on_touch_up(touch)
+
+        had_touches = bool(self._touches)
+        result = super().on_touch_up(touch)
+
+        # Last finger released → fire drag_end (unless a long-press already fired)
+        if had_touches and not self._touches:
+            if not self._longpress_fired and self._on_drag_end:
+                self._on_drag_end(self)
+            self._longpress_fired = False
+        return result
 
     def _fire_longpress(self):
+        self._longpress_fired = True
         if self._on_longpress:
             self._on_longpress(self)
 
@@ -132,12 +160,13 @@ class PlacedAsset(Scatter):
         }
 
     @classmethod
-    def from_dict(cls, d, on_select=None, on_longpress=None):
+    def from_dict(cls, d, on_select=None, on_longpress=None, on_drag_end=None):
         a = cls(
             source=d['source'],
             base_size=int(d['size'][0]),
             on_select=on_select,
             on_longpress=on_longpress,
+            on_drag_end=on_drag_end,
         )
         a.size = (float(d['size'][0]), float(d['size'][1]))
         a.pos = (float(d['pos'][0]), float(d['pos'][1]))

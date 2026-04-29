@@ -2,6 +2,9 @@
 
 - last_session.json    — auto-saved continuously, restored on launch
 - projects/<name>.json — manual named saves, loadable on demand
+
+v0.3: floor source is included in serialization. Loaded projects with
+missing files (assets or floor) silently skip those items.
 """
 import os
 import json
@@ -16,33 +19,44 @@ class ProjectManager:
     # ----- Serialization -----
     def serialize_canvas(self, canvas_area):
         return {
-            'version': 1,
+            'version': 2,
             'saved_at': datetime.now().isoformat(),
             'grid': {
                 'size': float(canvas_area.grid_overlay.grid_size),
                 'visible': bool(canvas_area.grid_overlay.visible),
             },
+            'floor': canvas_area.floor.to_dict(),
             'assets': [a.to_dict() for a in canvas_area.all_assets()],
         }
 
     def deserialize_into(self, canvas_area, data):
         canvas_area.clear_assets()
+        canvas_area.clear_floor()
+
         grid = data.get('grid', {})
         try:
             canvas_area.grid_overlay.grid_size = float(grid.get('size', 64.0))
             canvas_area.grid_overlay.visible = bool(grid.get('visible', True))
         except Exception:
             pass
+
+        floor = data.get('floor') or {}
+        try:
+            src = floor.get('source', '')
+            if src and os.path.isfile(src):
+                canvas_area.set_floor(src)
+        except Exception:
+            pass
+
         for asset_data in data.get('assets', []):
             try:
                 src = asset_data.get('source', '')
                 if not src or not os.path.isfile(src):
-                    # Skip missing files (asset deleted from disk since save)
                     continue
                 canvas_area.restore_asset(asset_data)
             except Exception:
                 continue
-        # Loaded canvas starts with nothing selected
+
         canvas_area.deselect()
 
     # ----- Last session (auto) -----

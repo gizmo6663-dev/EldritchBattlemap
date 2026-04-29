@@ -1,7 +1,8 @@
 """Left-side asset browser.
 
-Category tabs (one row of toggle buttons) + scrollable thumbnail grid.
-Thumbnails are raw Image widgets with ButtonBehavior mixed in.
+Category tabs + thumbnail grid + dynamic hint label.
+Tapping a thumbnail in the Floors category sets it as the tiled floor;
+tapping in any other category places it as a movable asset.
 """
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.gridlayout import GridLayout
@@ -14,6 +15,8 @@ from kivy.metrics import dp
 
 from battlemap.config import THUMBNAIL_SIZE, CATEGORIES
 
+FLOOR_CATEGORY = 'Floors'
+
 
 class _ThumbImage(ButtonBehavior, Image):
     """Image with on_release — works inside ScrollView (taps vs scrolls)."""
@@ -21,10 +24,12 @@ class _ThumbImage(ButtonBehavior, Image):
 
 
 class AssetPanel(BoxLayout):
-    def __init__(self, library, on_asset_selected, on_refresh_request, **kwargs):
+    def __init__(self, library, on_asset_selected, on_floor_selected,
+                 on_refresh_request, **kwargs):
         super().__init__(orientation='vertical', size_hint_x=0.30, **kwargs)
         self.library = library
         self.on_asset_selected = on_asset_selected
+        self.on_floor_selected = on_floor_selected
         self.on_refresh_request = on_refresh_request
         self._current_category = CATEGORIES[0]
 
@@ -35,8 +40,7 @@ class AssetPanel(BoxLayout):
             height=dp(32),
         ))
 
-        # Category tabs — row of ToggleButtons in a 'category' group so
-        # only one stays pressed at a time.
+        # Category tabs
         tab_row = BoxLayout(
             orientation='horizontal',
             size_hint_y=None,
@@ -57,6 +61,16 @@ class AssetPanel(BoxLayout):
             tab_row.add_widget(tab)
         self.add_widget(tab_row)
 
+        # Hint line that changes meaning based on the active tab
+        self._hint = Label(
+            text='',
+            size_hint_y=None,
+            height=dp(22),
+            font_size=dp(11),
+            color=(0.65, 0.65, 0.7, 1),
+        )
+        self.add_widget(self._hint)
+
         scroll = ScrollView(size_hint=(1, 1))
         self.thumb_grid = GridLayout(
             cols=2,
@@ -75,8 +89,19 @@ class AssetPanel(BoxLayout):
             self._current_category = tab.text
             self._populate(tab.text)
 
+    def _on_thumb_tap(self, path):
+        if self._current_category == FLOOR_CATEGORY:
+            self.on_floor_selected(path)
+        else:
+            self.on_asset_selected(path)
+
     def _populate(self, category):
         self.thumb_grid.clear_widgets()
+        if category == FLOOR_CATEGORY:
+            self._hint.text = 'Tap to set as tiled floor'
+        else:
+            self._hint.text = 'Tap to place'
+
         items = self.library.assets(category)
         if not items:
             self.thumb_grid.add_widget(Label(
@@ -99,7 +124,7 @@ class AssetPanel(BoxLayout):
                 keep_ratio=True,
                 mipmap=True,
             )
-            thumb.bind(on_release=lambda w, p=path: self.on_asset_selected(p))
+            thumb.bind(on_release=lambda w, p=path: self._on_thumb_tap(p))
             self.thumb_grid.add_widget(thumb)
 
     def reload(self):
