@@ -61,13 +61,13 @@ class AssetPanel(BoxLayout):
             tab_row.add_widget(tab)
         self.add_widget(tab_row)
 
-        # Hint line that changes meaning based on the active tab
+        # Hint line
         self._hint = Label(
             text='',
             size_hint_y=None,
             height=dp(22),
             font_size=dp(11),
-            color=(0.65, 0.65, 0.7, 1),
+            color=(0.85, 0.75, 0.55, 1),  # Warm gold/beige
         )
         self.add_widget(self._hint)
 

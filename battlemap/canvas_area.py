@@ -1,20 +1,21 @@
 """The battlemap build area.
 
-Three stacked layers, bottom to top:
-  - floor (FloorBackground)     → tiled texture, drawn under everything
-  - assets_layer (FloatLayout)  → placed PlacedAsset (Scatter) widgets
-  - grid_overlay (GridOverlay)  → drawn on top, touch-passthrough
+Four stacked layers, bottom to top:
+  - floor (FloorBackground)         → tiled texture
+  - assets_layer (FloatLayout)      → placed PlacedAsset (Scatter) widgets
+  - grid_overlay (GridOverlay)      → grid lines
+  - measurement_overlay             → distance measurement (when active)
 
-v0.3 additions:
-  - Floor background layer
-  - snap_enabled flag + drag-end snapping
-  - Floor tile size auto-tracks grid size
+v0.4 additions:
+  - MeasurementOverlay for distance measurement
+  - Support for asset labels
 """
 from kivy.uix.relativelayout import RelativeLayout
 from kivy.uix.floatlayout import FloatLayout
 from battlemap.grid_overlay import GridOverlay
 from battlemap.placed_asset import PlacedAsset
 from battlemap.floor_background import FloorBackground
+from battlemap.measurement_overlay import MeasurementOverlay
 from battlemap.config import (
     DEFAULT_GRID_SIZE, DEFAULT_ASSET_SIZE, MIN_GRID_SIZE, MAX_GRID_SIZE,
 )
@@ -35,7 +36,7 @@ class CanvasArea(RelativeLayout):
         self.assets_layer = FloatLayout(size_hint=(1, 1))
         self.add_widget(self.assets_layer)
 
-        # Layer 3 — grid overlay (top, touch-passthrough)
+        # Layer 3 — grid overlay
         self.grid_overlay = GridOverlay(
             size_hint=(1, 1),
             grid_size=DEFAULT_GRID_SIZE,
@@ -43,9 +44,20 @@ class CanvasArea(RelativeLayout):
         )
         self.add_widget(self.grid_overlay)
 
-        # Floor tile size follows grid size — one tile = one grid cell
+        # Layer 4 — measurement overlay (top)
+        self.measurement_overlay = MeasurementOverlay(
+            size_hint=(1, 1),
+            grid_size=DEFAULT_GRID_SIZE,
+            active=False,
+        )
+        self.add_widget(self.measurement_overlay)
+
+        # Floor tile size follows grid size
         self.grid_overlay.bind(
-            grid_size=lambda inst, val: setattr(self.floor, 'tile_size', val)
+            grid_size=lambda inst, val: (
+                setattr(self.floor, 'tile_size', val),
+                setattr(self.measurement_overlay, 'grid_size', val)
+            )
         )
 
     # ----- Asset placement -----
@@ -61,7 +73,7 @@ class CanvasArea(RelativeLayout):
             center = (self.width / 2, self.height / 2)
         asset.center = center
         self.assets_layer.add_widget(asset)
-        self._handle_asset_select(asset)  # newly placed = selected
+        self._handle_asset_select(asset)
         return asset
 
     def restore_asset(self, asset_data):
@@ -87,7 +99,6 @@ class CanvasArea(RelativeLayout):
         self._selected = None
 
     def all_assets(self):
-        # children[0] is on top; reverse so the iterator goes bottom → top
         return list(reversed(self.assets_layer.children))
 
     # ----- Selection -----
@@ -146,3 +157,15 @@ class CanvasArea(RelativeLayout):
     def adjust_grid(self, delta):
         new_size = max(MIN_GRID_SIZE, min(MAX_GRID_SIZE, self.grid_overlay.grid_size + delta))
         self.grid_overlay.grid_size = new_size
+
+    # ----- Measurement -----
+    def toggle_measurement(self):
+        """Toggle measurement mode."""
+        self.measurement_overlay.active = not self.measurement_overlay.active
+        if not self.measurement_overlay.active:
+            self.measurement_overlay.clear()
+        return self.measurement_overlay.active
+
+    def is_measuring(self):
+        """Check if measurement mode is active."""
+        return self.measurement_overlay.active

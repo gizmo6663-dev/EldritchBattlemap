@@ -1,4 +1,4 @@
-"""Adjustable white grid overlay.
+"""Adjustable sepia grid overlay.
 
 This is the only widget in the app that uses canvas instructions —
 parametric grid lines can't be done any other way. Lines are static
@@ -12,7 +12,7 @@ from kivy.properties import NumericProperty, BooleanProperty, ListProperty
 class GridOverlay(Widget):
     grid_size = NumericProperty(64.0)
     visible = BooleanProperty(True)
-    line_color = ListProperty([1, 1, 1, 0.55])
+    line_color = ListProperty([0.7, 0.6, 0.4, 0.5])  # Sepia/brown-gold
     line_width = NumericProperty(1.0)
 
     def __init__(self, **kwargs):

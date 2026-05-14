@@ -2,7 +2,7 @@
 
 Most entries are regular Buttons fired on release. Entries with a
 trailing `True` are ToggleButtons whose handler receives the new on/off
-state. Currently: only `Snap` is a toggle.
+state.
 """
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
@@ -16,9 +16,12 @@ ACTIONS = [
     ('Grid -',    'grid_smaller'),
     ('Grid +',    'grid_bigger'),
     ('Snap',      'toggle_snap',  True),
+    ('Measure',   'measure',      True),
     ('Front',     'bring_front'),
     ('Back',      'send_back'),
     ('Delete',    'delete'),
+    ('Undo',      'undo'),
+    ('Redo',      'redo'),
     ('No Floor',  'clear_floor'),
     ('Load',      'load'),
     ('Save',      'save'),
@@ -38,6 +41,8 @@ class Toolbar(BoxLayout):
             **kwargs,
         )
         self.on_action = on_action
+        self.buttons = {}
+        
         for action_def in ACTIONS:
             if len(action_def) == 3 and action_def[2]:
                 # ToggleButton — handler gets bool state
@@ -49,4 +54,11 @@ class Toolbar(BoxLayout):
                 label, action = action_def[0], action_def[1]
                 btn = Button(text=label, font_size=dp(12))
                 btn.bind(on_release=lambda b, a=action: self.on_action(a))
+            
+            self.buttons[action] = btn
             self.add_widget(btn)
+
+    def set_button_enabled(self, action, enabled):
+        """Enable or disable a button."""
+        if action in self.buttons:
+            self.buttons[action].disabled = not enabled

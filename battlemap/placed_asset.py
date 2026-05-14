@@ -1,35 +1,29 @@
 """A draggable, scalable, rotatable image on the battlemap.
 
-v0.3:
-  - Selection highlight is now a child Widget (not canvas.after) so it
-    correctly inherits the Scatter's transform. Children of Scatter are
-    drawn through the transformation matrix automatically.
-  - on_drag_end callback fires when the last finger is released, used by
-    CanvasArea for snap-to-grid.
+v0.4:
+  - Added label support for HP tracking, names, etc.
+  - Selection highlight is a child Widget (inherits Scatter's transform)
+  - on_drag_end callback fires when the last finger is released
 """
 from kivy.uix.scatter import Scatter
 from kivy.uix.image import Image
 from kivy.uix.widget import Widget
+from kivy.uix.label import Label
 from kivy.graphics import Color, Line
 from kivy.properties import StringProperty, BooleanProperty
 from kivy.clock import Clock
 
 LONGPRESS_SECONDS = 0.6
-LONGPRESS_MOVE_TOLERANCE_SQ = 12 * 12  # ~12dp of slop before we cancel
+LONGPRESS_MOVE_TOLERANCE_SQ = 12 * 12
 
 
 class _SelectionHighlight(Widget):
-    """Yellow outline.
-
-    Added as a child of PlacedAsset (which is a Scatter), so it inherits
-    the parent's transform — translation, rotation, and scale all apply
-    automatically. Touches pass through.
-    """
+    """Golden outline that inherits parent transform."""
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         with self.canvas:
-            self._color = Color(1.0, 0.85, 0.2, 0.0)
+            self._color = Color(1.0, 0.85, 0.3, 0.0)
             self._line = Line(rectangle=(0, 0, 1, 1), width=1.5)
         self.bind(pos=self._update, size=self._update)
 
@@ -39,7 +33,7 @@ class _SelectionHighlight(Widget):
     def set_visible(self, visible):
         self._color.a = 1.0 if visible else 0.0
 
-    # Touch passthrough — never block the asset's drag/scale/rotate
+    # Touch passthrough
     def on_touch_down(self, touch): return False
     def on_touch_move(self, touch): return False
     def on_touch_up(self, touch): return False
@@ -48,6 +42,7 @@ class _SelectionHighlight(Widget):
 class PlacedAsset(Scatter):
     source = StringProperty('')
     selected = BooleanProperty(False)
+    label_text = StringProperty('')  # For HP, names, etc.
 
     def __init__(self, source, base_size=128,
                  on_select=None, on_longpress=None, on_drag_end=None,
@@ -69,6 +64,7 @@ class PlacedAsset(Scatter):
         w, h = self._detect_aspect(source, base_size)
         self.size = (w, h)
 
+        # Asset image
         self.image = Image(
             source=source,
             size_hint=(1, 1),
@@ -78,12 +74,26 @@ class PlacedAsset(Scatter):
         )
         self.add_widget(self.image)
 
-        # Highlight is a child widget — it inherits Scatter's transform,
-        # so it follows the asset through translation, rotation, and scale.
+        # Selection highlight
         self._highlight = _SelectionHighlight(size_hint=(1, 1))
         self.add_widget(self._highlight)
 
+        # Label for HP/names - positioned above the asset
+        self._label = Label(
+            text='',
+            size_hint=(None, None),
+            size=(200, 30),
+            pos_hint={'center_x': 0.5, 'top': 1.05},
+            color=(1.0, 0.85, 0.3, 1),  # Gold
+            font_size='14sp',
+            bold=True,
+            outline_width=2,
+            outline_color=(0, 0, 0),
+        )
+        self.add_widget(self._label)
+
         self.bind(selected=self._update_selection_visual)
+        self.bind(label_text=self._update_label)
 
     @staticmethod
     def _detect_aspect(source, base_size):
@@ -101,6 +111,9 @@ class PlacedAsset(Scatter):
 
     def _update_selection_visual(self, *_):
         self._highlight.set_visible(self.selected)
+
+    def _update_label(self, *_):
+        self._label.text = self.label_text
 
     # ---- Touch handling ----
     def on_touch_down(self, touch):
@@ -137,7 +150,6 @@ class PlacedAsset(Scatter):
         had_touches = bool(self._touches)
         result = super().on_touch_up(touch)
 
-        # Last finger released → fire drag_end (unless a long-press already fired)
         if had_touches and not self._touches:
             if not self._longpress_fired and self._on_drag_end:
                 self._on_drag_end(self)
@@ -157,6 +169,7 @@ class PlacedAsset(Scatter):
             'size': [float(self.width), float(self.height)],
             'scale': float(self.scale),
             'rotation': float(self.rotation),
+            'label_text': self.label_text,
         }
 
     @classmethod
@@ -172,4 +185,5 @@ class PlacedAsset(Scatter):
         a.pos = (float(d['pos'][0]), float(d['pos'][1]))
         a.scale = float(d.get('scale', 1.0))
         a.rotation = float(d.get('rotation', 0.0))
+        a.label_text = d.get('label_text', '')
         return a
